@@ -1,0 +1,11 @@
+pyproject.toml
+trellis.egg-info/PKG-INFO
+trellis.egg-info/SOURCES.txt
+trellis.egg-info/dependency_links.txt
+trellis.egg-info/entry_points.txt
+trellis.egg-info/requires.txt
+trellis.egg-info/top_level.txt
+trellis_cli/__init__.py
+trellis_cli/main.py
+trellis_cli/build/lib/main.py
+trellis_cli/build/lib/trellis_cli.py

@@ -1,0 +1,2 @@
+[console_scripts]
+trellis = trellis_cli.main:app
