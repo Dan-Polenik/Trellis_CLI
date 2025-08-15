@@ -5,7 +5,11 @@ import requests
 import json, random, time, subprocess
 from datetime import datetime
 import typer
-app = typer.Typer(help="trellis: local pulsar sandbox CLI (podman-based)")
+
+from trellis_cli.flink import app as flink_app
+app = typer.Typer(help="Trellis CLI root command")
+
+app.add_typer(flink_app, name="flink")
 
 # defaults (override via env)
 PULSAR_NAME = os.getenv("PULSAR_NAME", "pulsar")
@@ -26,7 +30,20 @@ PULSAR_CLUSTER_LABEL = os.getenv("PULSAR_CLUSTER_LABEL", "standalone")
 DATA_DIR = Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "trellis"
 PROM_DIR = DATA_DIR / "prom"
 PROM_CFG = PROM_DIR / "prometheus.yml"
-
+firsts = ["Kvothe","Denna","Bast","Auri","Simmon","Fela","Devi","Ambrose","Elodin","Kilvin",
+              "Harry","Molly","Karrin","Michael","Thomas","Ebenezer","Murphy","Marcone","Susan",
+              "Arlen","Leesha","Rojer","Jardir","Renna","Inevera","Abban",
+              "Logen","Ferro","Jezal","Glokta","Bayaz","Dogman","Tul","Black","Calder",
+              "Usagi","Ami","Rei","Makoto","Minako","Mamoru","Chibiusa","Haruka","Michiru","Setsuna","Hotaru",
+              "Yuji","Megumi","Nobara","Satoru","Sukuna","Maki","Toge","Panda","Yuta",
+              "Gideon","Harrow","Ianthe","Coronabeth","Pyrrha","Camilla","Palamedes","Ortus"]
+lasts  = ["Rothfuss","Lackless","Chandrian","Maer","Alveron",
+              "Dresden","Carpenter","McCoy","Raith","Marcone","Gard","Luccio","Ramirez",
+              "Bales","Paper","Green","Cutter",
+              "Ninefingers","Malacus","dan","West","Nine","Luthar",
+              "Tsukino","Mizuno","Hino","Kino","Aino","Chiba","Tenou","Kaiou","Meioh","Tomoe",
+              "Itadori","Fushiguro","Kugisaki","Gojo","Ryomen","Zenin","Inumaki","Okkotsu","Geto",
+              "Nav","Nonagesimus","Tridentarius","Glaurica","Sextus"]
 def sh(*args: str, check=True) -> subprocess.CompletedProcess:
     return subprocess.run(" ".join(args), shell=True, check=check)
 
@@ -61,7 +78,7 @@ def ensure_prom_cfg():
     cluster: {PULSAR_CLUSTER_LABEL}
 scrape_configs:
   - job_name: broker
-    metrics_path: /metrics
+    metrics_path: /metrics/
     static_configs:
       - targets: [ "host.containers.internal:{PULSAR_HTTP_PORT}" ]
 """)
@@ -217,64 +234,63 @@ def init_space(
 
 
 
-
-
 @app.command("test-publish")
 def test_publish(
-    topic: str = typer.Argument(..., help="e.g. persistent://test-pulsar-dev/ingress/nums"),
-    count: int = typer.Option(150, "-n", "--count", help="messages to send"),
-    rate: float = typer.Option(0.0, "--rate", help="messages/sec; 0 = as fast as possible"),
-    service_url: str = typer.Option("pulsar://localhost:6650", "--url", help="pulsar service url"),
+    topic: str = typer.Argument(..., help="Kafka topic (KoP) or Pulsar topic depending on mode"),
+    count: int = typer.Option(150, "-n", "--count"),
+    rate: float = typer.Option(0.0, "--rate"),
+    service_url: str = typer.Option("pulsar://localhost:6650", "--url", help="Pulsar service url"),
+    bootstrap: str = typer.Option("localhost:9092", "--bootstrap", help="Kafka bootstrap for KoP"),
     sub: str = typer.Option("trellis-producer", "--name", help="producer name"),
+    kop: bool = typer.Option(False, help="Produce via Kafka to KoP instead of Pulsar")
 ):
     """
-    publish randomized JSON payloads (first_name, last_name, order_no, amount) to a Pulsar topic.
+    publish randomized JSON to either Pulsar or Kafka(KoP).
     """
-    try:
-        import pulsar  # from 'pulsar-client'
-    except ImportError:
-        typer.secho("missing dependency: run `pipx inject trellis pulsar-client`", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    firsts = ["Kvothe","Denna","Bast","Auri","Simmon","Fela","Devi","Ambrose","Elodin","Kilvin",
-              "Harry","Molly","Karrin","Michael","Thomas","Ebenezer","Murphy","Marcone","Susan",
-              "Arlen","Leesha","Rojer","Jardir","Renna","Inevera","Abban",
-              "Logen","Ferro","Jezal","Glokta","Bayaz","Dogman","Tul","Black","Calder",
-              "Usagi","Ami","Rei","Makoto","Minako","Mamoru","Chibiusa","Haruka","Michiru","Setsuna","Hotaru",
-              "Yuji","Megumi","Nobara","Satoru","Sukuna","Maki","Toge","Panda","Yuta",
-              "Gideon","Harrow","Ianthe","Coronabeth","Pyrrha","Camilla","Palamedes","Ortus"]
-    lasts  = ["Rothfuss","Lackless","Chandrian","Maer","Alveron",
-              "Dresden","Carpenter","McCoy","Raith","Marcone","Gard","Luccio","Ramirez",
-              "Bales","Paper","Green","Cutter",
-              "Ninefingers","Malacus","dan","West","Nine","Luthar",
-              "Tsukino","Mizuno","Hino","Kino","Aino","Chiba","Tenou","Kaiou","Meioh","Tomoe",
-              "Itadori","Fushiguro","Kugisaki","Gojo","Ryomen","Zenin","Inumaki","Okkotsu","Geto",
-              "Nav","Nonagesimus","Tridentarius","Glaurica","Sextus"]
-
-    client = pulsar.Client(service_url, operation_timeout_seconds=5, io_threads=4, message_listener_threads=2)
-    producer = client.create_producer(topic, producer_name=sub, send_timeout_millis=15000)
-
-    sleep_s = 1.0 / rate if rate and rate > 0 else 0.0
-    ok = 0
-
-    for i in range(count):
-        rec = {
+    # build the message payloads
+    # ... your existing name lists ...
+    def payload(i):
+        return json.dumps({
             "first_name": random.choice(firsts),
             "last_name":  random.choice(lasts),
             "order_no":   f"ORD-{random.randint(10_000_000, 99_999_999)}",
             "amount":     round(random.uniform(5.0, 500.0), 2),
             "ts":         datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
             "seq":        i + 1,
-        }
-        producer.send(json.dumps(rec, separators=(",", ":")).encode("utf-8"))
-        ok += 1
-        if sleep_s: time.sleep(sleep_s)
-        if i % 25 == 24:
-            typer.echo(f"…sent {i+1}/{count}")
+        }, separators=(",", ":")).encode("utf-8")
 
-    producer.flush()
-    client.close()
-    typer.echo(f"✅ published {ok}/{count} to {topic}")
+    sleep_s = 1.0 / rate if rate and rate > 0 else 0.0
+
+    if kop:
+        try:
+            from kafka import KafkaProducer   # pip install kafka-python
+        except ImportError:
+            typer.secho("missing dependency: run `pipx inject trellis kafka-python`", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        producer = KafkaProducer(bootstrap_servers=[bootstrap], linger_ms=5, acks="all")
+        for i in range(count):
+            producer.send(topic, payload(i))
+            if sleep_s: time.sleep(sleep_s)
+            if i % 25 == 24: typer.echo(f"…sent {i+1}/{count}")
+        producer.flush()
+        typer.echo(f"✅ published {count}/{count} to Kafka topic {topic} via KoP")
+    else:
+        try:
+            import pulsar  # from 'pulsar-client'
+        except ImportError:
+            typer.secho("missing dependency: run `pipx inject trellis pulsar-client`", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        client = pulsar.Client(service_url, operation_timeout_seconds=5, io_threads=4, message_listener_threads=2)
+        producer = client.create_producer(topic, producer_name=sub, send_timeout_millis=15000)
+        ok = 0
+        for i in range(count):
+            producer.send(payload(i))
+            ok += 1
+            if sleep_s: time.sleep(sleep_s)
+            if i % 25 == 24: typer.echo(f"…sent {i+1}/{count}")
+        producer.flush()
+        client.close()
+        typer.echo(f"✅ published {ok}/{count} to Pulsar topic {topic}")
 
 
 if __name__ == "__main__":

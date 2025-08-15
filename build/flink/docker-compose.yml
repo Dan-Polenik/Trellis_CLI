@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  jobmanager:
+    image: apache/flink:1.18.1-java11
+    container_name: trellis-flink-jm
+    command: jobmanager
+    ports:
+      - "8081:8081"        # Flink REST/UI
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.port: 8081
+        taskmanager.numberOfTaskSlots: 2
+
+  taskmanager:
+    image: apache/flink:1.18.1-java11
+    container_name: trellis-flink-tm
+    depends_on: [jobmanager]
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+
+  beam_job_server:
+    image: apache/beam_flink1.18_job_server:2.57.0
+    container_name: trellis-beam-flink-js
+    depends_on: [jobmanager, taskmanager]
+    network_mode: host         # lets Go client hit localhost:8099 directly
+    command: |
+      --flink-master=localhost:8081

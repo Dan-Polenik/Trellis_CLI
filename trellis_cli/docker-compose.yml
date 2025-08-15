@@ -1,0 +1,67 @@
+version: '3.8'
+services:
+  jobmanager:
+    container_name: trellis-flink-jm
+    image: apache/flink:1.18.1-java11
+    ports:
+      - '8081:8081'
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.port: 8081
+        taskmanager.numberOfTaskSlots: 2
+    networks:
+      - beamnet
+    command: jobmanager
+  taskmanager:
+    container_name: trellis-flink-tm
+    image: apache/flink:1.18.1-java11
+    depends_on:
+      - jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    networks:
+      - beamnet
+    command: taskmanager
+  java_harness:
+    container_name: trellis-beam-java-harness
+    image: apache/beam_java11_sdk:2.67.0
+    networks:
+      - beamnet
+    command: |
+      java -cp /opt/apache/beam/* org.apache.beam.sdk.fn.server.BeamFnExternalWorkerPool --service_port=50001
+  beam_job_server:
+    container_name: trellis-beam-flink-js
+    image: apache/beam_flink1.18_job_server:2.67.0
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - java_harness
+    ports:
+      - '8099:8099'
+      - '8098:8098'
+      - '8097:8097'
+    volumes:
+      - /Users/daniel.polenik/.trellis/flink/jars:/opt/beam/jars:ro
+    environment:
+      - CLASSPATH=/opt/beam/jars/*:$CLASSPATH
+    networks:
+      - beamnet
+    command: |
+      --flink-master=jobmanager:8081 --job-host=0.0.0.0 --job-port=8099 --artifact-port=8098 --expansion-port=8097 --defaultEnvironmentType=EXTERNAL --defaultEnvironmentConfig=java_harness:50001
+  go_harness:
+    container_name: trellis-beam-go-harness
+    image: apache/beam_go_sdk:2.67.0
+    depends_on:
+      - beam_job_server
+    networks:
+      - beamnet
+    command: |
+      --worker_pool --service_port=50000
+
+networks:
+  beamnet: {}
