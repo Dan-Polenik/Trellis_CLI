@@ -1,0 +1,44 @@
+-- Create user with RSA key authentication (run this first if user doesn't exist)
+-- CREATE USER EINVOICE_STREAM_USER
+--     RSA_PUBLIC_KEY = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMI
+-- IBCgKCAQEAnpMJqi3JaRN22rq6IRP8JaqrAQ/j+0eHj4CJkzHifZR1z+hzRk084M
+-- +3TGz+MUzgIPKekLYC6bR3WGHwTqJyaGgEkpI7up5doovK5jbIBxvSqJDpYpqH9j
+-- 8Atc7dVgmUPT6ZxnSNyFDXI+iVc07uj7qjeiU7wJQhbKedIe7NMI/ZSYxFih1HiP
+-- JWwQ9f1RVuxW0qtdCA9EujjQ9Bh1eDI3OYdlrxc5zXYhdb/Jz1vebhZ1q9NHx8WT
+-- dXmGiUj2qEGYtZLNmXMQvwaoANBMgKcAjcyel7ebvro9W5lL17S3Trr4l1gSr7Hp
+-- JYzXmv4x+zmywSfEbqebR3HTpZGmapawIDAQAB'
+--     DEFAULT_WAREHOUSE = 'COMPUTE_WH'
+--     DEFAULT_ROLE = 'PUBLIC';
+
+-- Set Snowflake context
+USE DATABASE DB_DEV_DATAFABRIC_RAW;
+USE SCHEMA CONTROL_DAN;
+USE WAREHOUSE COMPUTE_WH;
+
+-- Grant permissions to your streaming user
+GRANT USAGE ON DATABASE DB_DEV_DATAFABRIC_RAW TO USER EINVOICE_STREAM_USER;
+GRANT USAGE ON SCHEMA DB_DEV_DATAFABRIC_RAW.CONTROL_DAN TO USER EINVOICE_STREAM_USER;
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO USER EINVOICE_STREAM_USER;
+
+-- Grant table permissions for direct streaming
+GRANT INSERT ON TABLE SAMPLESINK TO USER EINVOICE_STREAM_USER;
+GRANT SELECT ON TABLE SAMPLESINK TO USER EINVOICE_STREAM_USER; -- For debugging
+
+-- Your actual table (ready for direct streaming)
+create or replace TABLE SAMPLESINK (
+    TENANT_ID VARCHAR(16777216),
+    DOCUMENT_ID VARCHAR(16777216),
+    STATUS VARCHAR(16777216),
+    EVENT_INSTANT TIMESTAMP_TZ(9),
+    INGEST_INSTANT TIMESTAMP_TZ(9) DEFAULT CURRENT_TIMESTAMP(),
+    EVENT_HASH VARCHAR(16777216),
+    constraint SAMPLESINK_PK primary key (EVENT_HASH)
+);
+
+-- For direct streaming, you just need the table!
+-- Flink/Deltastream will INSERT directly via JDBC
+-- No file formats, stages, or pipes needed
+
+-- Example of what your Flink app will do:
+-- INSERT INTO SAMPLESINK (TENANT_ID, DOCUMENT_ID, STATUS, EVENT_INSTANT, EVENT_HASH)
+-- VALUES ('tenant123', 'doc456', 'PROCESSED', '2025-09-12T10:00:00Z', 'hash789');

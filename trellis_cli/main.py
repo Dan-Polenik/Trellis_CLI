@@ -1,23 +1,19 @@
-import os
-from pathlib import Path
 import typer
-import requests
+import os
 import json, random, time, subprocess
 from datetime import datetime
-import typer
+from pathlib import Path
+from trellis_cli.flink.flink import up as flink_up
+from trellis_cli.dev.scala.notebook import up as notebook_up
+from trellis_cli.flink.flink import app as flink_app
+from trellis_cli.dev.scala.notebook import app as notebook_app
+from trellis_cli.utils import ensure_vm_if_podman, sh, http_up
 
-from trellis_cli.flink import app as flink_app
-app = typer.Typer(help="Trellis CLI root command")
-
-app.add_typer(flink_app, name="flink")
-
-# defaults (override via env)
 PULSAR_NAME = os.getenv("PULSAR_NAME", "pulsar")
 PM_NAME = os.getenv("PM_NAME", "pulsar-manager")
 PROM_NAME = os.getenv("PROM_NAME", "prom")
 GRAF_NAME = os.getenv("GRAF_NAME", "graf")
 NET_NAME = os.getenv("NET_NAME", "pulsar-net")
-
 PULSAR_BIN_PORT = int(os.getenv("PULSAR_BIN_PORT", "6650"))
 PULSAR_HTTP_PORT = int(os.getenv("PULSAR_HTTP_PORT", "8080"))
 PM_UI_PORT = int(os.getenv("PM_UI_PORT", "9527"))
@@ -26,67 +22,30 @@ PROM_PORT = int(os.getenv("PROM_PORT", "9090"))
 GRAF_PORT = int(os.getenv("GRAF_PORT", "3000"))
 
 PULSAR_CLUSTER_LABEL = os.getenv("PULSAR_CLUSTER_LABEL", "standalone")
-
 DATA_DIR = Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "trellis"
 PROM_DIR = DATA_DIR / "prom"
 PROM_CFG = PROM_DIR / "prometheus.yml"
-firsts = ["Kvothe","Denna","Bast","Auri","Simmon","Fela","Devi","Ambrose","Elodin","Kilvin",
-              "Harry","Molly","Karrin","Michael","Thomas","Ebenezer","Murphy","Marcone","Susan",
-              "Arlen","Leesha","Rojer","Jardir","Renna","Inevera","Abban",
-              "Logen","Ferro","Jezal","Glokta","Bayaz","Dogman","Tul","Black","Calder",
-              "Usagi","Ami","Rei","Makoto","Minako","Mamoru","Chibiusa","Haruka","Michiru","Setsuna","Hotaru",
-              "Yuji","Megumi","Nobara","Satoru","Sukuna","Maki","Toge","Panda","Yuta",
-              "Gideon","Harrow","Ianthe","Coronabeth","Pyrrha","Camilla","Palamedes","Ortus"]
-lasts  = ["Rothfuss","Lackless","Chandrian","Maer","Alveron",
-              "Dresden","Carpenter","McCoy","Raith","Marcone","Gard","Luccio","Ramirez",
-              "Bales","Paper","Green","Cutter",
-              "Ninefingers","Malacus","dan","West","Nine","Luthar",
-              "Tsukino","Mizuno","Hino","Kino","Aino","Chiba","Tenou","Kaiou","Meioh","Tomoe",
-              "Itadori","Fushiguro","Kugisaki","Gojo","Ryomen","Zenin","Inumaki","Okkotsu","Geto",
-              "Nav","Nonagesimus","Tridentarius","Glaurica","Sextus"]
-def sh(*args: str, check=True) -> subprocess.CompletedProcess:
-    return subprocess.run(" ".join(args), shell=True, check=check)
+firsts = ["Kvothe","Denna","Bast","Auri","Simmon","Fela","Devi","Ambrose","Elodin","Kilvin", "Harry","Molly","Karrin","Michael","Thomas","Ebenezer","Murphy","Marcone","Susan", "Arlen","Leesha","Rojer","Jardir","Renna","Inevera","Abban", "Logen","Ferro","Jezal","Glokta","Bayaz","Dogman","Tul","Black","Calder", "Usagi","Ami","Rei","Makoto","Minako","Mamoru","Chibiusa","Haruka","Michiru","Setsuna","Hotaru", "Yuji","Megumi","Nobara","Satoru","Sukuna","Maki","Toge","Panda","Yuta", "Gideon","Harrow","Ianthe","Coronabeth","Pyrrha","Camilla","Palamedes","Ortus"]
+lasts = ["Rothfuss","Lackless","Chandrian","Maer","Alveron", "Dresden","Carpenter","McCoy","Raith","Marcone","Gard","Luccio","Ramirez", "Bales","Paper","Green","Cutter", "Ninefingers","Malacus","dan","West","Nine","Luthar", "Tsukino","Mizuno","Hino","Kino","Aino","Chiba","Tenou","Kaiou","Meioh","Tomoe", "Itadori","Fushiguro","Kugisaki","Gojo","Ryomen","Zenin","Inumaki","Okkotsu","Geto", "Nav","Nonagesimus","Tridentarius","Glaurica","Sextus"]
+app = typer.Typer(help="Trellis CLI root")
+app.add_typer(flink_app, name="flink")
+app.add_typer(notebook_app, name="notebook")
 
-def http_up(url: str, tries: int = 60, timeout: float = 2.0) -> bool:
-    for _ in range(tries):
-        try:
-            r = requests.get(url, timeout=timeout)
-            if r.ok:
-                return True
-        except requests.RequestException:
-            pass
-        time.sleep(1)
-    return False
+@app.command("start")
+def start_cmd(all: bool = typer.Option(False, "--all", help="start Pulsar+Grafana then Flink then Notebook")):
+    ensure_vm_if_podman()
+    # call your existing start() for Pulsar stack
+    from . import main as _self  # if this is in the same module
+    _self._start()
+    if all:
+        flink_up()
+        notebook_up()
 
-def ensure_podman_vm():
-    # mac/windows podman uses a VM; if present, make sure it's running
-    try:
-        out = subprocess.check_output("podman machine inspect --format '{{.State}}'", shell=True).decode().strip()
-        if out != "running":
-            typer.echo("starting podman machine…")
-            sh("podman machine start")
-    except subprocess.CalledProcessError:
-        # linux or older setups—ignore
-        pass
-
-def ensure_prom_cfg():
-    PROM_DIR.mkdir(parents=True, exist_ok=True)
-    if not PROM_CFG.exists():
-        PROM_CFG.write_text(f"""global:
-  scrape_interval: 15s
-  external_labels:
-    cluster: {PULSAR_CLUSTER_LABEL}
-scrape_configs:
-  - job_name: broker
-    metrics_path: /metrics/
-    static_configs:
-      - targets: [ "host.containers.internal:{PULSAR_HTTP_PORT}" ]
-""")
 
 @app.command()
-def start():
+def _start():
     """start pulsar, pulsar-manager, prometheus, grafana (pulsar dashboards)"""
-    ensure_podman_vm()
+    ensure_vm_if_podman()
     ensure_prom_cfg()
 
     # network
@@ -142,6 +101,19 @@ def start():
                f"  pulsar manager ui:  http://localhost:{PM_UI_PORT}\n"
                f"  prometheus:         http://localhost:{PROM_PORT}\n"
                f"  grafana:            http://localhost:{GRAF_PORT} (admin / happypulsaring)")
+def ensure_prom_cfg():
+    PROM_DIR.mkdir(parents=True, exist_ok=True)
+    if not PROM_CFG.exists():
+        PROM_CFG.write_text(f"""global:
+  scrape_interval: 15s
+  external_labels:
+    cluster: {PULSAR_CLUSTER_LABEL}
+scrape_configs:
+  - job_name: broker
+    metrics_path: /metrics/
+    static_configs:
+      - targets: [ "host.containers.internal:{PULSAR_HTTP_PORT}" ]
+""")
 
 @app.command("down")
 def down_cmd():
@@ -220,9 +192,9 @@ def init_space(
     # smoke publish -> log file
     log_file = Path("init-publish-logs.log")
     cmd = (
-        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m '5' -n 1 && "
-        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m '2.75' -n 1 && "
-        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m '-1' -n 1"
+        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m" + str(payload(0)) + " -n 1 && "
+        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m" + str(payload(1)) + " -n 1 && "
+        f"podman exec -it {PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic} -m" + str(payload(2)) + " -n 1"
     )
     rc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     log_file.write_text(rc.stdout + rc.stderr)
@@ -232,7 +204,15 @@ def init_space(
         typer.echo("❌ publish test failed (see init-publish-logs.log)")
         raise typer.Exit(rc.returncode)
 
-
+def payload(i):
+        return json.dumps({
+            "first_name": random.choice(firsts),
+            "last_name":  random.choice(lasts),
+            "order_no":   f"ORD-{random.randint(10_000_000, 99_999_999)}",
+            "amount":     round(random.uniform(5.0, 500.0), 2),
+            "ts":         datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+            "seq":        i + 1,
+        }, separators=(",", ":")).encode("utf-8")
 
 @app.command("test-publish")
 def test_publish(
@@ -249,15 +229,7 @@ def test_publish(
     """
     # build the message payloads
     # ... your existing name lists ...
-    def payload(i):
-        return json.dumps({
-            "first_name": random.choice(firsts),
-            "last_name":  random.choice(lasts),
-            "order_no":   f"ORD-{random.randint(10_000_000, 99_999_999)}",
-            "amount":     round(random.uniform(5.0, 500.0), 2),
-            "ts":         datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
-            "seq":        i + 1,
-        }, separators=(",", ":")).encode("utf-8")
+    
 
     sleep_s = 1.0 / rate if rate and rate > 0 else 0.0
 

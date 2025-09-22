@@ -63,10 +63,9 @@ def http_up(url: str, tries: int = 60, timeout: float = 2.0) -> bool:
         time.sleep(1)
     return False
 
-def write_if_missing(path: Path, content: str) -> Path:
+def write(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists():
-        path.write_text(content)
+    path.write_text(content)
     return path
 
 def ensure_vm_if_podman() -> None:

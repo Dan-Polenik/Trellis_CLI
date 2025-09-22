@@ -6,7 +6,7 @@ from .utils.util import (
     ensure_network,
     ensure_vm_if_podman,
 )
-from .flink.flink import (
+from .flink import (
     up
   
 )

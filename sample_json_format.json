@@ -1,0 +1,7 @@
+{
+  "tenantId": "tenant_123",
+  "documentId": "doc_456", 
+  "status": "PROCESSED",
+  "eventInstant": "2025-09-10T15:30:45.123Z",
+  "eventHash": "sha256_abc123def456"
+}
