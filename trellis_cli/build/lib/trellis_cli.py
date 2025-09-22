@@ -87,6 +87,9 @@ def start():
         f"-e PULSAR_PREFIX_exposeManagedLedgerMetricsInPrometheus=true "
         f"-e PULSAR_PREFIX_exposeBookkeeperClientStatsInPrometheus=true "
         f"-e PULSAR_PREFIX_exposeProducerAndConsumerMetricsInPrometheus=true "
+        f"-e PULSAR_PREFIX_allowAutoTopicCreation=true "
+        f"-e PULSAR_PREFIX_allowAutoTopicCreationType=partitioned "
+        f"-e PULSAR_PREFIX_allowAutoSubscriptionCreation=true "
         f"docker.io/apachepulsar/pulsar:latest "
         f"bash -lc \"bin/apply-config-from-env.py conf/standalone.conf && bin/pulsar standalone\""
     )
