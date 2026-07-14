@@ -209,6 +209,7 @@ def init_space(
     )
     rc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     log_file.write_text(rc.stdout + rc.stderr)
+    test_publish(f"{PULSAR_NAME} bin/pulsar-client produce persistent://{tenant}/{namespace}/{topic}",3)
     if rc.returncode == 0:
         typer.echo("✅ publish test passed (see init-publish-logs.log)")
     else:
