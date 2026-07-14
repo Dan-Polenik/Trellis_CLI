@@ -147,7 +147,7 @@ def init_space(
     tenant: str = "test-pulsar-dev",
     namespace: str = "ingress",
     topic: str = "nums",
-    partitions: int = 3,
+    partitions: int = 1,
 ):
     """create a default tenant/namespace/topic and run a smoke publish (logs → init-publish-logs.log)"""
     # check pulsar up
